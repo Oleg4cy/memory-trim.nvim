@@ -86,13 +86,19 @@ Telescope's `cache_picker` setting is separate from memory-trim.nvim and is not 
 
 ## Health check
 
-Run:
+If the plugin is configured for lazy loading, load it first so Neovim can discover its healthcheck:
+
+```vim
+:lua require("memory-trim")
+```
+
+Then run:
 
 ```vim
 :checkhealth memory-trim
 ```
 
-The health check verifies that the public module and API are available and reports whether native allocator trimming can be used. Telescope is optional and is not required by the check.
+The health check verifies that the public module and API are available and reports whether native allocator trimming can be used. Telescope is optional and is not required by the check. In a fresh session, running `:checkhealth memory-trim` before the plugin has been loaded may result in `No healthcheck found for "memory-trim" plugin.` because the plugin directory is not yet present in Neovim's runtimepath.
 
 ## Testing
 
