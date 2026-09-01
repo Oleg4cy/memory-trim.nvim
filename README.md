@@ -44,9 +44,9 @@ For the manual API without Telescope integration:
   "Oleg4cy/memory-trim.nvim",
   lazy = true,
 }
+```
 
 Lazy.nvim will automatically load the plugin when `require("memory-trim")` is first used.
-```
 
 ## Usage
 
