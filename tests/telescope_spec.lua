@@ -30,8 +30,14 @@ end
 local function leave(buffer)
   local destination = scratch_buffer()
   enter(destination)
-  vim.wait(100)
   return destination
+end
+
+local function wait_for_collect_calls(expected_calls)
+  check(vim.wait(500, function()
+    return collect_calls == expected_calls
+  end), "deferred allocator cleanup did not run")
+  check(collect_calls == expected_calls, "allocator cleanup call count mismatch")
 end
 
 local function delete_buffer(buffer)
@@ -54,6 +60,8 @@ local function run()
   local before = collect_calls
   integration.setup()
   local destination = leave(already_open)
+  check(collect_calls == before, "TelescopePrompt cleanup must be deferred")
+  wait_for_collect_calls(before + 1)
   check(collect_calls == before + 1, "setup must handle an already-open TelescopePrompt")
   delete_buffer(already_open)
   delete_buffer(destination)
@@ -64,6 +72,8 @@ local function run()
   set_filetype(prompt, "TelescopePrompt")
   before = collect_calls
   destination = leave(prompt)
+  check(collect_calls == before, "TelescopePrompt cleanup must be deferred")
+  wait_for_collect_calls(before + 1)
   check(collect_calls == before + 1, "TelescopePrompt close must collect exactly once")
   delete_buffer(prompt)
   delete_buffer(destination)
@@ -73,6 +83,9 @@ local function run()
   set_filetype(normal, "lua")
   before = collect_calls
   destination = leave(normal)
+  vim.wait(500, function()
+    return collect_calls ~= before
+  end)
   check(collect_calls == before, "non-Telescope buffers must not trigger cleanup")
   delete_buffer(normal)
   delete_buffer(destination)
@@ -84,6 +97,8 @@ local function run()
   set_filetype(repeated, "TelescopePrompt")
   before = collect_calls
   destination = leave(repeated)
+  check(collect_calls == before, "TelescopePrompt cleanup must be deferred")
+  wait_for_collect_calls(before + 1)
   check(collect_calls == before + 1, "repeated setup must not duplicate cleanup")
   delete_buffer(repeated)
   delete_buffer(destination)
@@ -93,8 +108,14 @@ local function run()
   set_filetype(one_shot, "TelescopePrompt")
   before = collect_calls
   destination = leave(one_shot)
+  check(collect_calls == before, "TelescopePrompt cleanup must be deferred")
+  wait_for_collect_calls(before + 1)
   enter(one_shot)
   local second_destination = leave(one_shot)
+  check(collect_calls == before + 1, "one-shot cleanup must not run synchronously twice")
+  vim.wait(500, function()
+    return collect_calls ~= before + 1
+  end)
   check(collect_calls == before + 1, "one TelescopePrompt must trigger cleanup only once")
   delete_buffer(one_shot)
   delete_buffer(destination)
