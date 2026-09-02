@@ -117,4 +117,4 @@ There is no polling and no recurring timer. Core work happens only when explicit
 
 ## License
 
-See the separate `LICENSE` file. Licensing will be finalized separately.
+MIT. See [LICENSE](LICENSE).

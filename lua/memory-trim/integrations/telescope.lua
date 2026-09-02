@@ -22,9 +22,10 @@ local function attach(bufnr, group)
     once = true,
     callback = function()
       attached_buffers[bufnr] = nil
-        vim.defer_fn(function()
+
+      vim.defer_fn(function()
         require("memory-trim.allocator").collect()
-        end, 100)
+      end, 100)
     end,
   })
 end
