@@ -17,7 +17,7 @@ if ffi_ok then
 end
 
 function M.collect()
-  collectgarbage("collect")
+  pcall(collectgarbage, "collect")
 
   if not trim then
     return false

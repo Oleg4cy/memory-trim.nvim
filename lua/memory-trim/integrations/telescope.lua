@@ -16,7 +16,7 @@ local function attach(bufnr, group)
 
   attached_buffers[bufnr] = true
 
-  vim.api.nvim_create_autocmd("BufLeave", {
+  vim.api.nvim_create_autocmd("BufWipeout", {
     group = group,
     buffer = bufnr,
     once = true,
