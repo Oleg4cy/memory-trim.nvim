@@ -3,7 +3,7 @@ local function check(condition, message)
 end
 
 local source = debug.getinfo(1, "S").source:sub(2)
-local root = assert(source:match("^(.*)/tests/health_spec%.lua$"), "could not derive repository root")
+local root = vim.fn.fnamemodify(source, ":h:h")
 local health_path = root .. "/lua/memory-trim/health.lua"
 
 local original_vim = _G.vim
