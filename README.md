@@ -1,52 +1,35 @@
 # memory-trim.nvim
 
-Small Neovim plugin for releasing unused memory after memory-heavy transient operations. It always performs Lua garbage collection and, where available, additionally calls `malloc_trim(0)`. It also includes optional automatic cleanup after Telescope pickers close.
-
-The plugin cannot and should not promise to restore RSS to its exact startup value. Loaded Lua modules, native allocations, allocator fragmentation, Neovim state, and other plugins may legitimately remain resident.
+memory-trim.nvim helps release unused memory after memory-heavy transient operations. It attempts Lua garbage collection and, when available, native `malloc_trim(0)`. It also supports automatic Telescope cleanup. RSS is not guaranteed to return to its exact startup value.
 
 ## Features
 
-- Manual memory collection
+- Manual memory collection through the Lua API
 - Optional native allocator trimming
-- Automatic cleanup after Telescope picker close
+- Automatic cleanup for the standard TelescopePrompt lifecycle
 - Telescope-independent core
-- No polling
-- No recurring timers
+- No polling or recurring timers
 - Lazy-loading friendly
-- Graceful fallback when native trimming is unavailable
+- Graceful fallback without `malloc_trim`
+- No commands or default mappings
 
 ## Requirements
 
 - Neovim
-- Telescope is optional and is required only when Telescope integration is enabled
-- Native `malloc_trim` support depends on the platform and libc; it is not required
+- Telescope only for automatic Telescope integration
+- Optional native `malloc_trim` support, which depends on the platform and libc
 
 ## Installation
 
-With [Lazy.nvim](https://github.com/folke/lazy.nvim), enable Telescope cleanup with:
+With [Lazy.nvim](https://github.com/folke/lazy.nvim):
 
 ```lua
 {
   "Oleg4cy/memory-trim.nvim",
-  ft = "TelescopePrompt",
-  opts = {
-    telescope = true,
-  },
 }
 ```
 
-This keeps memory-trim.nvim unloaded until a Telescope prompt actually appears.
-
-For the manual API without Telescope integration:
-
-```lua
-{
-  "Oleg4cy/memory-trim.nvim",
-  lazy = true,
-}
-```
-
-Lazy.nvim will automatically load the plugin when `require("memory-trim")` is first used.
+The repository's Lazy.nvim package metadata provides `TelescopePrompt` lazy-loading and enables the standard Telescope integration.
 
 ## Usage
 
@@ -56,17 +39,19 @@ Collect memory explicitly:
 require("memory-trim").collect()
 ```
 
-Lua garbage collection is always attempted. The boolean result is `true` when native `malloc_trim` reports that memory was released. `false` does not mean that Lua garbage collection failed; it means that native trimming was unavailable or reported that no memory was released.
+`collect()` first attempts Lua garbage collection, then attempts `malloc_trim(0)` when it is available. Both operations are protected, so cleanup failures do not escape into normal user runtime; a Lua-GC failure does not prevent an available native trim from being attempted.
 
-Check native allocator support:
+Its single boolean return value describes native trimming only: it is `true` only when `malloc_trim(0)` was available, completed successfully, and returned exactly `1`. It is `false` when native trimming is unavailable, fails, or returns another value. The Lua-GC result is intentionally not represented by this boolean.
+
+Check whether native `malloc_trim` was resolved and is available:
 
 ```lua
 require("memory-trim").can_trim()
 ```
 
-This reports whether native allocator trimming is available.
+`can_trim()` is a capability check and does not run cleanup.
 
-Enable optional Telescope cleanup:
+Manual setup can enable the Telescope integration:
 
 ```lua
 require("memory-trim").setup({
@@ -74,46 +59,48 @@ require("memory-trim").setup({
 })
 ```
 
-Telescope cleanup is opt-in.
+This manual setup is not required for the standard Lazy.nvim installation, whose package metadata supplies this option.
 
 ## Telescope integration
 
-The integration watches buffers with the standard `TelescopePrompt` filetype, reacts when a picker closes, and performs one cleanup deferred by 100 ms so Telescope teardown can finish first. It does not monkey-patch Telescope internals or poll in the background.
+The integration attaches to buffers whose filetype is exactly `TelescopePrompt`. Cleanup is triggered when an attached prompt buffer is wiped (`BufWipeout`), then deferred by 100 ms so Telescope teardown can finish first. One prompt buffer schedules one cleanup; an ordinary `BufLeave` or focus change is not the cleanup trigger.
 
-This applies to Telescope pickers using the standard `TelescopePrompt` filetype; compatibility with every third-party Telescope extension is not guaranteed.
+It relies on the normal Neovim `TelescopePrompt` buffer lifecycle. It does not require or configure Telescope, monkey-patch Telescope internals, poll, or use a recurring timer.
 
-Telescope's `cache_picker` setting is separate from memory-trim.nvim and is not modified by this plugin.
+Standard Telescope teardown wipes its prompt buffer and therefore triggers this integration. Custom third-party layouts or extensions that keep or reuse the prompt buffer instead may not trigger it.
 
 ## Health check
 
-If the plugin is configured for lazy loading, load it first so Neovim can discover its healthcheck:
+Load the plugin before running the health check when it is not yet on the runtimepath:
 
 ```vim
-:lua require("memory-trim")
-```
-
-Then run:
-
-```vim
+:Lazy load memory-trim.nvim
 :checkhealth memory-trim
 ```
 
-The health check verifies that the public module and API are available and reports whether native allocator trimming can be used. Telescope is optional and is not required by the check. In a fresh session, running `:checkhealth memory-trim` before the plugin has been loaded may result in `No healthcheck found for "memory-trim" plugin.` because the plugin directory is not yet present in Neovim's runtimepath.
+Under the standard package metadata, opening a Telescope picker also loads the plugin.
+
+The healthcheck is passive: it validates the public module and the `collect`, `can_trim`, and `setup` API shape; calls only `can_trim()` to inspect native allocator capability; reports native `malloc_trim` availability; and reports Telescope integration as optional. It does not call `collect()` or `setup()`, run Lua garbage collection, invoke `malloc_trim`, require Telescope, or require the Telescope integration module.
 
 ## Testing
 
-The standalone tests can be run with:
+Run the standalone suite with:
 
 ```sh
-nvim --headless -u tests/minimal_init.lua -l tests/allocator_spec.lua
-nvim --headless -u tests/minimal_init.lua -l tests/telescope_spec.lua
+nvim --headless -u tests/minimal_init.lua -i NONE -l tests/allocator_spec.lua
+nvim --headless -u tests/minimal_init.lua -i NONE -l tests/telescope_spec.lua
+nvim --headless -u tests/minimal_init.lua -i NONE -l tests/lazy_spec.lua
+nvim --headless -u tests/minimal_init.lua -i NONE -l tests/health_spec.lua
 ```
 
-These tests run independently of the user's normal Neovim configuration and do not require Telescope to be installed.
+- Allocator tests cover public allocator behavior, unavailable or failing FFI/native paths, and Lua-GC failure isolation.
+- Telescope tests cover the `BufWipeout` lifecycle, `BufLeave` non-triggering, deferred 100 ms cleanup, repeated setup/idempotency, pending deferred cleanup, and no Telescope dependency.
+- Lazy tests cover the root package metadata contract.
+- Health tests cover the passive healthcheck contract.
 
 ## Performance
 
-There is no polling and no recurring timer. Core work happens only when explicitly requested, while Telescope cleanup runs only after a Telescope prompt closes. With Lazy filetype loading, the plugin need not be loaded at startup. The plugin does not claim zero overhead.
+There is no polling and no recurring timer. Core work happens only when explicitly requested, while cleanup is scheduled only when an attached `TelescopePrompt` buffer is wiped. Under normal Lazy.nvim behavior, the plugin need not be loaded at startup. The plugin does not claim zero overhead.
 
 ## License
 
